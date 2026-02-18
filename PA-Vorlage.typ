@@ -67,12 +67,61 @@ Zweitens führt die Fokussierung auf Package-Level-Analysen zu einer hohen Rate 
 == Anforderungen an den PoC
  */
 = Grundlagen
-== Software Bill of Materials (SBOM)
-Wie schon erwähnt (vgl. @Motivation)  basieren übliche Scanner wie npm audit oder @OWASP auf den sogenannten @SBOM, um diese zu verstehen muss man auch diese verstehen.
-Ein @SBOM ist eine maschinenlesbare Liste aller Softwarekomponenten eines Produkts @ntia2021sbomoverview. Die NTIA spezifiziert Mindestinhalte wie Komponentenname, Version und Identifikatoren @ntia2021minimumelements. Das verbreitetste SBOM-Format ist SPDX, standardisiert als ISO/IEC 5962:2021 @isoiec5962spdx2021.
-
-SBOMs dokumentieren Dependencies auf Package-Ebene. Eine Bibliothek wird als Ganzes erfasst, unabhängig davon, welche ihrer Funktionen tatsächlich genutzt werden. Diese Package-Level-Granularität führt zu den beschriebenen Limitierungen im Vulnerability Management (siehe Motivation) @nsa2023sbommanagement.
 == Dependency Management
+
+Modern entwickelte JavaScript- und TypeScript-Anwendungen stützen sich 
+in hohem Maße auf externe Bibliotheken. Um diese zu verwalten, verwenden 
+Entwickler den Package Manager npm (Node Package Manager). Ein Package 
+Manager übernimmt drei zentrale Aufgaben: Er liest Manifest-Dateien wie 
+`package.json`, lädt die deklarierten Bibliotheken aus dem zentralen 
+npm-Registry herunter und installiert sie lokal im Projekt 
+@Mens2017SevenEcosystems. Dabei löst er nicht nur die explizit 
+angeforderten Dependencies auf, sondern rekursiv auch alle deren 
+Abhängigkeiten.
+
+Dependencies lassen sich in zwei Kategorien einteilen. Direkte 
+Dependencies werden explizit im Projekt-Manifest deklariert, 
+beispielsweise `express` in der `package.json`. Der Anwendungscode 
+importiert und nutzt diese Bibliotheken direkt. Transitive Dependencies 
+hingegen sind Abhängigkeiten dieser direkten Dependencies 
+@SotoValero2021MavenBloat. Wenn ein Node.js-Projekt `express@4.18.2` 
+deklariert, installiert npm automatisch auch die 31 Dependencies von 
+express, darunter `body-parser`, `cookie` und `debug`. Alle installierten 
+Packages werden im `node_modules`-Verzeichnis abgelegt.
+
+Dieser Mechanismus führt zum Phänomen der Dependency Amplification: Eine 
+einzelne direkte Dependency zieht eine Kaskade weiterer Dependencies nach 
+sich @Kikas2022DemystifyingNPM. Ein Projekt mit 50 direkten 
+Dependencies kann so auf mehrere hundert installierte Packages anwachsen 
+@Kikas2022DemystifyingNPM.
+
+Bei TypeScript-Projekten wird diese Amplification zusätzlich verstärkt: 
+Für jede JavaScript-Bibliothek ohne eingebaute Typdefinitionen muss ein 
+separates Type-Definition-Package aus dem `@types/*`-Namespace installiert 
+werden. Nutzt ein Projekt beispielsweise `express`, muss zusätzlich 
+`@types/express` installiert werden, um TypeScript-Typen zu erhalten. 
+npm unterscheidet zwischen `dependencies` (zur Laufzeit benötigt) und 
+`devDependencies` (nur für Build/Test). Type-Definition-Packages werden 
+als `devDependencies` deklariert, da sie ausschließlich zur Compile-Zeit 
+erforderlich sind.
+
+Diese Dependency Amplification führt zu einem fundamentalen Problem: Bei 
+hunderten automatisch installierten Packages verlieren Entwickler den 
+Überblick, welche Dependencies tatsächlich vom Anwendungscode genutzt 
+werden. Die in @Motivation beschriebenen Konsequenzen (akkumulierte 
+bloated dependencies, erhöhte Sicherheitsrisiken und False-Positive-Warnungen 
+in Vulnerability Scannern) sind direkte Folgen dieses Mechanismus.
+
+== Software Bill of Materials (SBOM)
+
+Wie in der Motivation beschrieben, basieren Scanner wie npm audit oder OWASP Dependency-Check auf Software Bills of Materials (SBOMs).
+Ein SBOM ist eine maschinenlesbare Liste aller Softwarekomponenten eines Produkts @ntia2021sbomoverview. 
+Im Gegensatz zu Manifest-Dateien wie `package.json`, die nur direkte Dependencies auflisten, erfasst ein SBOM auch alle transitiven Dependencies mit exakten Versionen.
+Die NTIA spezifiziert Mindestinhalte @ntia2021minimumelements, das verbreitetste Format ist SPDX (ISO/IEC 5962:2021) @isoiec5962spdx2021.
+
+SBOMs werden typischerweise durch spezialisierte Tools wie CycloneDX, Syft oder das Microsoft SBOM Tool aus den Dependency-Informationen eines Projekts generiert. Jeder SBOM-Eintrag dokumentiert eine Softwarekomponente mit folgenden Informationen: Paketname (z.B. `express`), Version (`4.18.2`), eindeutiger Identifikator als Package-URL (`pkg:npm/express@4.18.2`), Lizenzinformation (`MIT`), Lieferant sowie die Liste der direkten Dependencies dieser Komponente. Für ein typisches Node.js-Projekt mit 50 direkten Dependencies kann ein SBOM mehrere hundert Einträge umfassen, da auch alle transitiven Dependencies erfasst werden müssen.
+
+Die fundamentale Einschränkung von SBOMs liegt im Detailgrad der Dokumentation: Dependencies werden auf Package-Ebene dokumentiert. Eine Bibliothek wird als Ganzes erfasst, unabhängig davon, welche ihrer Funktionen tatsächlich genutzt werden. Bindet ein Projekt die Bibliothek `lodash` ein und nutzt nur die Funktion `_.debounce()`, erfasst das SBOM lediglich `lodash@4.17.21` als Dependency, ohne zu dokumentieren, welche der über 300 verfügbaren Funktionen von lodash im Code aufgerufen werden.
 == Bloated Dependencies
 /* 
 == Software Composition Analysis (SCA) und SBOM
@@ -80,6 +129,8 @@ SBOMs dokumentieren Dependencies auf Package-Ebene. Eine Bibliothek wird als Gan
 == Node.js/TypeScript: Modul-, Build- und Deployment-Grundlagen
 == Call-Graph-Grundlagen für JavaScript/TypeScript
 == Fehlerbilder und Begriffe (FP/FN, Soundness/Precision) */
+
+== Vulnerability Datenbanken
 
 = Der aktuelle Forschungsstand
 == Überblick und Einordnung (statisch vs. dynamisch; Evidence-Level)
