@@ -38,10 +38,30 @@ Priorisierung von Sicherheitsbefunden",
   library_paths: "Erkennung-ungenutzter-Bibliotheken-in-Deployments/PA03.bib",
 
   acronyms: (
-    (key: "NN", short: "NN", long: "Neural Network"),
-    (key: "SG", short: "SG", long: "Singular"),
+    // Security & Vulnerability
+    (key: "CVE",  short: "CVE",  long: "Common Vulnerabilities and Exposures"),
+    (key: "NVD",  short: "NVD",  long: "National Vulnerability Database"),
+    (key: "CVSS", short: "CVSS", long: "Common Vulnerability Scoring System"),
+    (key: "CWE",  short: "CWE",  long: "Common Weakness Enumeration"),
+    (key: "CPE",  short: "CPE",  long: "Common Platform Enumeration"),
+
+    // Tools & Standards
     (key: "OWASP", short: "OWASP", long: "Open Worldwide Application Security Project"),
-    (key: "SBOM", short: "SBOM", long: "Software Bill of Materials"),
+    (key: "SBOM",  short: "SBOM",  long: "Software Bill of Materials"),
+    (key: "SPDX",  short: "SPDX",  long: "Software Package Data Exchange"),
+    (key: "SCA",   short: "SCA",   long: "Software Composition Analysis"),
+    (key: "npm",   short: "npm",   long: "Node Package Manager"),
+
+    // Institutions
+    (key: "NIST", short: "NIST", long: "National Institute of Standards and Technology"),
+    (key: "NTIA", short: "NTIA", long: "National Telecommunications and Information Administration"),
+
+    // Technical
+    (key: "AST", short: "AST", long: "Abstract Syntax Tree"),
+    (key: "TS",  short: "TS",  long: "TypeScript"),
+    (key: "PoC", short: "PoC", long: "Proof of Concept"),
+    (key: "FP",  short: "FP",  long: "False Positive"),
+    (key: "FN",  short: "FN",  long: "False Negative"),
   ),
 )
 
@@ -56,9 +76,9 @@ Diese obsoleten Dependencies entstehen durch verschiedene Mechanismen. Transitiv
 
 Zweitens führt die Fokussierung auf Package-Level-Analysen zu einer hohen Rate an False-Positive-Warnungen. Die zentrale Herausforderung liegt in der fehlenden Granularität: SBOM-basierte Tools können nicht zwischen deployed und nicht-deployed Code differenzieren @2022Pashchenko, noch können sie feststellen, ob vulnerable Funktionen tatsächlich vom Anwendungscode aufgerufen werden. /* Während Call-Graph-basierte Forschungsansätze zeigen, dass eine feinere Analyseebene die False-Positive-Rate um 81% reduzieren kann @2021Nielsen */
 
-
-
 == Zielsetzung der Arbeit
+
+
 = Methodik
 
 /* = Begriffe, Modell und Anforderungen
@@ -112,7 +132,7 @@ werden. Die in @Motivation beschriebenen Konsequenzen (akkumulierte
 bloated dependencies, erhöhte Sicherheitsrisiken und False-Positive-Warnungen 
 in Vulnerability Scannern) sind direkte Folgen dieses Mechanismus.
 
-== Software Bill of Materials (SBOM)
+== Software Bill of Materials (SBOM)<Software-Bill-of-Materials>
 
 Wie in der Motivation beschrieben, basieren Scanner wie npm audit oder OWASP Dependency-Check auf Software Bills of Materials (SBOMs).
 Ein SBOM ist eine maschinenlesbare Liste aller Softwarekomponenten eines Produkts @ntia2021sbomoverview. 
@@ -123,7 +143,7 @@ SBOMs werden typischerweise durch spezialisierte Tools wie CycloneDX, Syft oder 
 
 Die fundamentale Einschränkung von SBOMs liegt im Detailgrad der Dokumentation: Dependencies werden auf Package-Ebene dokumentiert. Eine Bibliothek wird als Ganzes erfasst, unabhängig davon, welche ihrer Funktionen tatsächlich genutzt werden. Bindet ein Projekt die Bibliothek `lodash` ein und nutzt nur die Funktion `_.debounce()`, erfasst das SBOM lediglich `lodash@4.17.21` als Dependency, ohne zu dokumentieren, welche der über 300 verfügbaren Funktionen von lodash im Code aufgerufen werden.
 
-== Bloated Dependencies
+== Bloated Dependencies <Bloated-Dependencies>
 
 === Definition und Abgrenzung
 
@@ -146,7 +166,7 @@ anderer Packages installiert, ohne dass die Anwendung sie je verwendet
 dominierend, da der Dependency-Auflösungsmechanismus sie automatisch und ohne
 direktes Zutun der Entwickler in den Abhängigkeitsbaum einfügt
 (vgl. @Dependency_Management). Im Maven-Ökosystem existiert zusätzlich die
-Kategorie *geerbter* Dependencies aus Parent-POMs, die in npm keine
+Kategorie *geerbter* Dependencies aus Parent-POMs, die in @TS keine
 Entsprechung hat und daher in dieser Arbeit nicht weiter betrachtet wird.
 
 === Entstehungsmechanismen
@@ -232,7 +252,7 @@ Scanner erfassen eine Bibliothek als Ganzes, ohne zu berücksichtigen, welche
 ihrer Funktionen tatsächlich aufgerufen werden. Ponta et al. zeigen, dass
 erst eine code-zentrische, nutzungsbasierte Analyse feststellen kann, ob
 vulnerable Funktionen im konkreten Anwendungskontext tatsächlich erreichbar
-sind @ponta2018beyond. Eine bloated Dependency mit einer bekannten Schwachstelle
+sind @ponta2018beyond. Eine bloated Dependency mxit einer bekannten Schwachstelle
 löst daher eine Warnung aus, obwohl kein Codepfad die Schwachstelle je
 erreichen könnte. Die Reduktion von Dependency Bloat ist damit nicht nur eine
 Maintenance-Maßnahme, sondern eine Voraussetzung für präziseres
@@ -244,7 +264,69 @@ Vulnerability-Management.
 == Call-Graph-Grundlagen für JavaScript/TypeScript
 == Fehlerbilder und Begriffe (FP/FN, Soundness/Precision) */
 
-== Vulnerability Datenbanken
+
+== Vulnerability-Datenbanken und Dependency Scanner <Vulnerability-Datenbanken>
+
+Dieses Kapitel beschreibt den Aufbau der Schwachstellendatenbanken, auf
+denen Dependency-Scanner basieren, und den konkreten Prüfprozess, der zu
+einem Scanner-Befund führt. Beides bildet die technische Grundlage, um
+nachzuvollziehen, warum metadatenbasierte Scanner nicht zwischen erreichbaren
+und nicht erreichbaren Schwachstellen unterscheiden können.
+
+=== CVE und die National Vulnerability Database
+
+Das @CVE -Programm ist der zentrale Standard zur einheitlichen Benennung
+öffentlich bekannter Sicherheitslücken @cveprogram. Jede Schwachstelle
+erhält einen eindeutigen Bezeichner in der Form CVE-JAHR-NUMMER, der eine
+ökosystemübergreifende Referenzierung ermöglicht. Die @NVD des @NIST baut
+auf diesem Standard auf und reichert jeden @CVE -Eintrag mit strukturierten
+Metadaten an: einer Schweregradbewertung nach @CVSS, einer
+Schwachstellentyp-Klassifikation nach @CWE sowie einer Liste betroffener
+Produkte nach @CPE @Anwar2022CleaningNVD.
+
+Der @CPE -Eintrag ist für @NVD -basierte Dependency-Scanner das entscheidende
+Matching-Feld: Er codiert betroffene Produkte im Format
+`cpe:2.3:a:HERSTELLER:PRODUKT:VERSION` und definiert damit, welche
+Package-Versionen als verwundbar gelten @Anwar2022CleaningNVD. Allerdings
+ist dieses Matching strukturell ungenau: @CPE -Bezeichner operieren auf
+einer anderen Granularitätsebene als Package-Repository-Koordinaten und
+spezifizieren nicht, welche Funktionen der Bibliothek die Schwachstelle
+tatsächlich enthalten @2022Pashchenko @ponta2020detection.
+
+=== Von der Datenbank zum Scanner-Befund
+
+@SCA -Tools kombinieren @SBOM und Schwachstellendatenbanken zu einem
+vollständig automatisierten Prüfprozess. Dabei unterscheiden sich die
+genutzten Datenquellen und Matching-Verfahren je nach Tool: @OWASP
+Dependency-Check nutzt primär die @NVD mit @CPE -Matching
+@Imtiaz2021ComparativeSCA, während `npm audit` seit Oktober 2021 auf die
+GitHub Advisory Database mit Package-URL (purl) als Identifikator setzt
+@githubAdvisoryNpm2021. Trotz unterschiedlicher Datenquellen folgt der
+Ablauf demselben dreiteiligen Schema:
+
++ *Inventarisierung:* Der Scanner liest den installierten Dependency-Tree
+  (vgl. @Dependency_Management) und erzeugt eine Liste aller Packages mit
+  exakten Versionen, entweder direkt aus `node_modules` oder aus einem
+  @SBOM (vgl. @Software-Bill-of-Materials).
++ *Matching:* Jedes Package wird gegen die Einträge der jeweiligen
+  Datenbank abgeglichen. Ein Treffer liegt vor, wenn Paketname und Version
+  in den betroffenen Versionsbereich eines Schwachstellen-Eintrags fallen.
++ *Meldung:* Jeder Treffer wird als Befund ausgegeben, inklusive @CVE -ID,
+  @CVSS -Score und betroffener Version.
+
+#figure(
+  /* Abbildung folgt */
+  rect(width: 100%, height: 6em, stroke: 0.5pt),
+  caption: [Dreistufiger Prüfprozess eines metadatenbasierten
+            Dependency-Scanners (Inventarisierung, Matching, Meldung).]
+) <Dreischritt-Scanner>
+
+Ausschließlich Paketname und Versionsnummer bestimmen das Ergebnis. Ob
+die vulnerable Funktion im konkreten Anwendungskontext erreichbar ist,
+geht in diesen Prozess nicht ein (vgl. die in @Bloated-Dependencies
+quantifizierten Limitierungen). Genau diese Lücke adressiert der @PoC
+dieser Arbeit.
+
 
 = Der aktuelle Forschungsstand
 == Überblick und Einordnung (statisch vs. dynamisch; Evidence-Level)
