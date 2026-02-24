@@ -70,7 +70,7 @@ Priorisierung von Sicherheitsbefunden",
 
 Dependency Scanner wie npm audit und OWASP Dependency-Check sind aus der modernen Softwareentwicklung nicht mehr wegzudenken @ponta2020detection. Diese Tools basieren primär auf Software Bill of Materials (SBOM) und operieren ausschließlich auf Package-Ebene @ponta2018beyond. Aktuelle Forschung zeigt jedoch fundamentale Limitierungen dieser Ansätze, die zu erheblichen praktischen Problemen führen.
 
-Die Unfähigkeit zu erkennen, ob Code tatsächlich zur Laufzeit ausgeführt wird, führt zu zwei kritischen Problemen. Erstens akkumulieren Projekte obsolete Dependencies, die erhebliche Wartungskosten verursachen @2022Chuang. Empirische Analysen zeigen, dass 75,1% aller Maven-Dependencies als "bloated" klassifiziert werden können, wobei 57% der transitiven Dependencies vollständig ungenutzt sind @sotovalero2021maven. Im JavaScript-Ökosystem ist die Situation vergleichbar: 50,7% der Dependencies in CommonJS-Packages sind bloated @Liu2025. /* Die Entfernung einer einzigen direkten bloated Dependency kann kaskadenartig zur Elimination von bis zu 679 indirekten Dependencies führen @Liu2025. */
+Die Unfähigkeit zu erkennen, ob Code tatsächlich zur Laufzeit geladen wird, führt zu zwei kritischen Problemen. Erstens akkumulieren Projekte obsolete Dependencies, die erhebliche Wartungskosten verursachen @2022Chuang. Empirische Analysen zeigen, dass 75,1% aller Maven-Dependencies als "bloated" klassifiziert werden können, wobei 57% der transitiven Dependencies vollständig ungenutzt sind @sotovalero2021maven. Im JavaScript-Ökosystem ist die Situation vergleichbar: 50,6% der Dependencies in CommonJS-Packages sind bloated @Liu2025. /* Die Entfernung einer einzigen direkten bloated Dependency kann kaskadenartig zur Elimination von bis zu 679 indirekten Dependencies führen @Liu2025. */
 
 Diese obsoleten Dependencies entstehen durch verschiedene Mechanismen. Transitive Abhängigkeiten werden automatisch in die Dependency-Hierarchie eingefügt, ohne dass Entwickler sich deren Präsenz bewusst sind @2022Chuang. Darüber hinaus werden Dependencies während der Entwicklung hinzugefügt und bei Code-Refactorings nicht entfernt @Liu2025. Das Entfernen ist jedoch oft schwierig, weil Entwickler nicht mit ausreichender Sicherheit beurteilen können, ob eine Dependency wirklich entbehrlich ist @2022Chuang. Die resultierenden Kosten manifestieren sich in erhöhten Binary-Größen, verlängerten Build-Zeiten, erhöhtem Speicherverbrauch und gesteigertem Sicherheitsrisiko durch eine vergrößerte Angriffsfläche @sotovalero2021maven @soto2023coverage. In containerisierten Deployments wird die Problematik besonders sichtbar, da Images teils eine große Menge veralteter oder verwundbarer JavaScript-Pakete enthalten @8667984.
 
@@ -187,8 +187,7 @@ melden zahlreiche False Positives, weil sie dynamische Sprachfeatures wie
 vollständig erfassen können. Empirisch zeigt sich, dass Ansätze, die
 Call-Graph-Analyse mit einer Klassifikation der Dependency-Beziehungen
 kombinieren, rund ein Drittel dieser False Positives eliminieren können
-@2022Chuang. Eine explorative Studie mit 23 Pull Requests deutet an, dass
-erhebliche Unsicherheiten besonders bei transitiven Dependencies bestehen:
+@2022Chuang. Eine explorative Studie mit 31 Pull Requests (23 davon beantwortet) deutet an, dass erhebliche Unsicherheiten besonders bei transitiven Dependencies bestehen:
 Während Entwickler 14 von 15 Vorschlägen zur Entfernung direkter bloated
 Dependencies akzeptierten, nahmen sie nur 4 von 8 Vorschläge zu transitiven
 Dependencies an @SotoValero2021MavenBloat.
@@ -203,20 +202,32 @@ sich dabei methodisch: Maven erfasst Dependency-Beziehungen als Kanten im
 Dependency-Graph (N = 723.444), npm hingegen einzelne Package-Installationen
 (N = 50.488). Die Prozentwerte sind daher nur bedingt direkt vergleichbar,
 zeigen aber in beiden Ökosystemen einen hohen Anteil ungenutzter Dependencies.
-@Anteil-Bloated-Dependecies zeigt die Verteilung nach Typ.
+@Anteil-Bloated-Maven und @Anteil-Bloated-npm zeigen die Verteilung nach Typ.
+
+#figure(
+  table(
+    columns: (auto, auto),
+    align: (left, center),
+    [*Typ*], [*Anteil (N = 723.444)*],
+    [Direkt (bloated)],    [2,7%],
+    [Inherited (bloated)], [15,4%],
+    [Transitiv (bloated)], [57,0%],
+    [*Gesamt bloated*],    [*75,1%*],
+  ),
+  caption: [Bloated Dependencies im Maven-Ökosystem @SotoValero2021MavenBloat.]
+)<Anteil-Bloated-Maven>
 
 #figure(
   table(
     columns: (auto, auto, auto),
     align: (left, center, center),
-    [*Typ*], [*Maven*], [*CommonJS/npm*],
-    [Direkt (bloated)],    [2,7%],   [13,8%],
-    [Transitiv (bloated)], [57,0%],  [51,3%],
-    [*Gesamt bloated*],    [*75,1%*],[*50,6%*],
+    [*Typ*], [*Anzahl*], [*Anteil der Kategorie*],
+    [Direkt (bloated)],   [120 / 869],       [13,8%],
+    [Indirekt (bloated)], [25.446 / 49.619], [51,3%],
+    [*Gesamt bloated*],   [*25.566 / 50.488*], [*50,6%*],
   ),
-  caption: [Anteil bloated Dependencies nach Typ in Maven und npm-Ökosystem.
-            Quellen: @SotoValero2021MavenBloat, @Liu2025.]
-)<Anteil-Bloated-Dependecies>
+  caption: [Bloated Dependencies im CommonJS/npm-Ökosystem @Liu2025.]
+)<Anteil-Bloated-npm>
 
 Über beide Ökosysteme hinweg zeigt sich ein konsistentes Muster: Transitive
 Dependencies machen den Großteil des Bloats aus, während direkte Dependencies
@@ -252,7 +263,7 @@ Scanner erfassen eine Bibliothek als Ganzes, ohne zu berücksichtigen, welche
 ihrer Funktionen tatsächlich aufgerufen werden. Ponta et al. zeigen, dass
 erst eine code-zentrische, nutzungsbasierte Analyse feststellen kann, ob
 vulnerable Funktionen im konkreten Anwendungskontext tatsächlich erreichbar
-sind @ponta2018beyond. Eine bloated Dependency mxit einer bekannten Schwachstelle
+sind @ponta2018beyond. Eine bloated Dependency mit einer bekannten Schwachstelle
 löst daher eine Warnung aus, obwohl kein Codepfad die Schwachstelle je
 erreichen könnte. Die Reduktion von Dependency Bloat ist damit nicht nur eine
 Maintenance-Maßnahme, sondern eine Voraussetzung für präziseres
@@ -275,44 +286,56 @@ und nicht erreichbaren Schwachstellen unterscheiden können.
 
 === CVE und die National Vulnerability Database
 
-Das @CVE -Programm ist der zentrale Standard zur einheitlichen Benennung
+Das @CVE#[]-Programm ist der zentrale Standard zur einheitlichen Benennung
 öffentlich bekannter Sicherheitslücken @cveprogram. Jede Schwachstelle
 erhält einen eindeutigen Bezeichner in der Form CVE-JAHR-NUMMER, der eine
-ökosystemübergreifende Referenzierung ermöglicht. Die @NVD des @NIST baut
-auf diesem Standard auf und reichert jeden @CVE -Eintrag mit strukturierten
+ökosystemübergreifende Referenzierung ermöglicht. Die @NVD#[] des @NIST baut
+auf diesem Standard auf und reichert jeden @CVE#[]-Eintrag mit strukturierten
 Metadaten an: einer Schweregradbewertung nach @CVSS, einer
 Schwachstellentyp-Klassifikation nach @CWE sowie einer Liste betroffener
-Produkte nach @CPE @Anwar2022CleaningNVD.
+Produkte nach @CPE @Anwar2022CleaningNVD. Anwar et al. erfassten in einem
+Snapshot von Mai 2018 über 107.200 @CVE#[]-Einträge, die der @NVD über
+zwei Jahrzehnte hinzugefügt wurden @Anwar2022CleaningNVD.
 
-Der @CPE -Eintrag ist für @NVD -basierte Dependency-Scanner das entscheidende
-Matching-Feld: Er codiert betroffene Produkte im Format
+@CPE ist ein standardisiertes Namensschema zur eindeutigen Identifikation
+von Software-Produkten und -Versionen. Der @CPE#[]-Eintrag ist für
+@NVD#[]-basierte Dependency-Scanner das entscheidende Matching-Feld:
+Er codiert betroffene Produkte im Format
 `cpe:2.3:a:HERSTELLER:PRODUKT:VERSION` und definiert damit, welche
 Package-Versionen als verwundbar gelten @Anwar2022CleaningNVD. Allerdings
-ist dieses Matching strukturell ungenau: @CPE -Bezeichner operieren auf
-einer anderen Granularitätsebene als Package-Repository-Koordinaten und
-spezifizieren nicht, welche Funktionen der Bibliothek die Schwachstelle
-tatsächlich enthalten @2022Pashchenko @ponta2020detection.
+verwenden @CPE#[]-Bezeichner eine andere Granularität und Konvention als
+Package-Repository-Koordinaten, was zu ungenauem Package-Mapping führt
+@2022Pashchenko. Metadatenbasierte Scanner prüfen zudem nicht, ob die
+vulnerable Funktion einer Bibliothek im konkreten Anwendungskontext
+tatsächlich aufgerufen wird; das ist der zentrale Unterschied zu
+code-zentrischen Ansätzen @ponta2020detection.
 
 === Von der Datenbank zum Scanner-Befund
 
-@SCA -Tools kombinieren @SBOM und Schwachstellendatenbanken zu einem
-vollständig automatisierten Prüfprozess. Dabei unterscheiden sich die
-genutzten Datenquellen und Matching-Verfahren je nach Tool: @OWASP
-Dependency-Check nutzt primär die @NVD mit @CPE -Matching
-@Imtiaz2021ComparativeSCA, während `npm audit` seit Oktober 2021 auf die
-GitHub Advisory Database mit Package-URL (purl) als Identifikator setzt
-@githubAdvisoryNpm2021. Trotz unterschiedlicher Datenquellen folgt der
-Ablauf demselben dreiteiligen Schema:
+@SCA#[]-Tools wie `npm audit`, das in @npm#[] integrierte
+Kommandozeilenwerkzeug zur Sicherheitsprüfung von Abhängigkeiten, oder
+@OWASP Dependency-Check, ein verbreitetes Open-Source-Tool der Open
+Worldwide Application Security Project Foundation, erzeugen automatisch ein
+Inventar aller eingesetzten Open-Source-Komponenten und gleichen dieses gegen
+Schwachstellendatenbanken ab @Imtiaz2021ComparativeSCA. Dabei unterscheiden
+sich die genutzten Datenquellen je nach Tool: @OWASP Dependency-Check bezieht
+Schwachstellendaten unter anderem aus der @NVD und nutzt @CPE#[]-Matching zur
+Identifikation betroffener Packages @Imtiaz2021ComparativeSCA, während
+`npm audit` seit Oktober 2021 auf die GitHub Advisory Database mit
+Package-URL (purl) als Identifikator setzt @githubAdvisoryNpm2021. Trotz unterschiedlicher Datenquellen lässt sich der Ablauf auf drei
+grundlegende Schritte reduzieren @Imtiaz2021ComparativeSCA:
 
-+ *Inventarisierung:* Der Scanner liest den installierten Dependency-Tree
-  (vgl. @Dependency_Management) und erzeugt eine Liste aller Packages mit
-  exakten Versionen, entweder direkt aus `node_modules` oder aus einem
-  @SBOM (vgl. @Software-Bill-of-Materials).
++ *Inventarisierung:* Der Scanner liest Dependency-Manifest-Dateien wie
+  `package-lock.json` und erzeugt daraus eine Liste aller Packages mit
+  exakten Versionen @Imtiaz2021ComparativeSCA. Alternativ kann ein @SBOM
+  (vgl. @Software-Bill-of-Materials) als Eingabequelle dienen, das den in
+  @Dependency_Management beschriebenen Dependency-Tree in maschinenlesbarer
+  Form abbildet.
 + *Matching:* Jedes Package wird gegen die Einträge der jeweiligen
   Datenbank abgeglichen. Ein Treffer liegt vor, wenn Paketname und Version
   in den betroffenen Versionsbereich eines Schwachstellen-Eintrags fallen.
-+ *Meldung:* Jeder Treffer wird als Befund ausgegeben, inklusive @CVE -ID,
-  @CVSS -Score und betroffener Version.
++ *Meldung:* Jeder Treffer wird als Befund ausgegeben, inklusive @CVE#[]-ID,
+  @CVSS#[]-Score und betroffener Version.
 
 #figure(
   /* Abbildung folgt */
@@ -326,6 +349,8 @@ die vulnerable Funktion im konkreten Anwendungskontext erreichbar ist,
 geht in diesen Prozess nicht ein (vgl. die in @Bloated-Dependencies
 quantifizierten Limitierungen). Genau diese Lücke adressiert der @PoC
 dieser Arbeit.
+
+
 
 
 = Der aktuelle Forschungsstand
