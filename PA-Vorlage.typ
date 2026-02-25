@@ -360,10 +360,6 @@ quantifizierten Limitierungen). Genau diese Lücke adressiert der @PoC
 dieser Arbeit.
 
 
-// ============================================================
-// 3  VERWANDTE ARBEITEN
-// ============================================================
-
 = Verwandte Arbeiten
 
 == Dynamische Ansätze (Runtime-Tracing, Coverage)
@@ -383,7 +379,19 @@ dieser Arbeit.
 // Das Usage-Evidence-Schema bildet die konzeptuelle Grundlage für alle
 // Designentscheidungen und wird daher hier als erstes Unterkapitel geführt
 // 
-Dieses Kapitel entwickelt das konzeptuelle Fundament des PoC. Als Ausgangspunkt wird ein gestuftes Evidenzmodell eingeführt, das die in Kapitel 2 beschriebenen Limitierungen metadatenbasierter Scanner formalisiert und als Bewertungsrahmen für alle nachfolgenden Designentscheidungen dient. Darauf aufbauend werden die Anforderungen an den PoC abgeleitet, die methodische Entscheidung für eine statische Erreichbarkeitsanalyse begründet und die Gesamtarchitektur der Analysepipeline beschrieben."
+Dieses Kapitel entwickelt das konzeptuelle und methodische Fundament des
+PoC in drei aufeinander aufbauenden Schritten. Zunächst wird ein gestuftes
+Evidenzmodell eingeführt, das die in @Vulnerability-Datenbanken und
+@Bloated-Dependencies beschriebenen Limitierungen metadatenbasierter Scanner
+formalisiert; es bildet den Bewertungsrahmen für alle nachfolgenden
+Entscheidungen. Auf dieser Grundlage werden die funktionalen Anforderungen
+an den PoC abgeleitet und die methodische Entscheidung für eine statische
+Erreichbarkeitsanalyse (L2a) begründet. Abschließend wird die
+Gesamtarchitektur der Analysepipeline beschrieben, die diese Entscheidungen
+in eine konkrete Implementierungsstruktur überführt.
+
+
+
 
 == Usage-Evidence-Schema <Usage-Evidence-Schema>
 
@@ -402,7 +410,9 @@ Dependencies gemeldet werden, die zwar installiert, aber nie referenziert
 oder erreichbar sind. Das in @Motivation beschriebene Grundproblem, die
 fehlende Erreichbarkeitsanalyse metadatenbasierter Scanner, lässt sich
 damit als fehlende Differenzierung zwischen drei Evidenzstufen
-formalisieren, die im Folgenden als L0, L1 und L2 eingeführt werden.
+formalisieren, die im Folgenden als L0, L1 und L2 eingeführt werden, eine
+Unterscheidung die sich direkt in den Stufen L0 (Präsenz), L1 (Import) und
+L2 (Erreichbarkeit) widerspiegelt.
 
 Drei unabhängige Arbeiten motivieren dieses Modell empirisch aus
 verschiedenen Perspektiven. Ponta et al. begründen zunächst konzeptionell,
@@ -420,8 +430,7 @@ Warnungen für Development-only-Dependencies die der deployten um das
 Dreifache übersteigen @2022Pashchenko. Gemeinsam belegen diese Arbeiten,
 dass eine reine Präsenzanalyse unzureichend ist, und motivieren ein Modell,
 das zwischen Präsenz, syntaktischer Referenzierung und tatsächlicher
-Erreichbarkeit unterscheidet -- eine Unterscheidung, die sich direkt in den
-Stufen L0 (Präsenz), L1 (Import) und L2 (Erreichbarkeit) widerspiegelt.
+Erreichbarkeit unterscheidet.
 
 Für das Schema gelten folgende Begriffe. Als *Konstrukt* gilt jede
 referenzierbare Einheit des Laufzeit-relevanten Interfaces einer Dependency,
@@ -432,14 +441,26 @@ nicht auf L2-Niveau einordenbar, da sie kein adressierbares Konstrukt
 exponieren. Als *Anwendungscode* gilt der Teil des Projekts außerhalb des
 `node_modules`-Verzeichnisses (vgl. @Dependency_Management). Das Schema
 erhebt keinen Vollständigkeitsanspruch: Jede Stufe erzeugt strukturell
-unvermeidbare False Negatives, deren Ursachen dynamische Sprachfeatures des
-JavaScript-Ökosystems sind. Diese Grenzen werden in den Verwandten Arbeiten
-(Kapitel 3) methodisch und in der Evaluation (Kapitel 6) als Limitation
-des PoC behandelt.
+unvermeidbare False Negatives. Konkret bedeutet das: Dynamische Imports der
+Form `require(variable)` sind auf L1-Niveau nicht erfassbar, weil der
+Modulpfad erst zur Laufzeit bekannt ist. Dependency-Injection-Mechanismen
+wie NestJS-Dekoratoren laden Module ohne klassische Importanweisung und
+entziehen sich damit der L2a-Analyse. Diese und weitere strukturelle Grenzen
+werden in den Verwandten Arbeiten (Kapitel 3) methodisch und in der
+Evaluation (Kapitel 6) als Limitation des PoC behandelt.
 
 @Trichter-Schema veranschaulicht, dass jede Stufe eine echte Teilmenge der
-vorherigen beschreibt.
+vorherigen beschreibt: Nicht jede installierte Dependency wird importiert,
+und nicht jede importierte Dependency besitzt einen nachweisbaren Aufrufpfad.
 
+@Evidence-Schema fasst alle vier Stufen zusammen. Die Spalte *FN-Klasse*
+beschreibt, welche Arten von Dependencies eine Stufe strukturell nicht
+erfassen kann, also Fälle in denen eine tatsächlich genutzte Dependency
+fälschlicherweise als nicht genutzt eingestuft wird (False Negative). Die
+Spalte *Empirischer Mehrwert* gibt an, welchen messbaren Vorteil eine Stufe
+gegenüber der reinen Präsenzanalyse (L0) liefert, entweder durch belegte
+Zahlen aus der Literatur oder durch den Hinweis, dass der Wert im Rahmen
+dieser Arbeit erstmals erhoben wird.
 #figure(
   rect(width: 100%, height: 10em, stroke: 0.5pt),
   caption: [Trichtermodell: Jede Evidenzstufe beschreibt eine Teilmenge der
@@ -449,25 +470,29 @@ vorherigen beschreibt.
 
 #figure(
   table(
-    columns: (auto, auto, auto, auto),
-    align: (left, left, left, left),
-    [*Stufe*], [*Frage*], [*Methode*], [*FN-Klasse / Mehrwert*],
+    columns: (auto, auto, auto, auto, auto),
+    align: (left, left, left, left, left),
+    [*Stufe*], [*Frage*], [*Methode*], [*FN-Klasse*], [*Empirischer Mehrwert*],
     [L0 -- Präsenz],
       [Ist die Dependency\ installiert?],
       [SBOM, Dependency-Tree\ (vgl. @Dreischritt-Scanner)],
-      [Keine FNs (statischer Tree);\ Baseline: Gesamtpräzision\ von npm audit 24%\ (N=12) @2021Nielsen],
+      [Keine FNs innerhalb\ des statischen Trees],
+      [Baseline; Gesamtpräzision\ von npm audit: 24%\ (N=12) @2021Nielsen],
     [L1 -- Import],
       [Wird die Dependency\ referenziert?],
       [Statische Quellcode-\ analyse der Imports],
-      [FNs durch dynamische\ Imports; obere Schranke\ der Exposition;\ Mehrwert in Kap. 6 erhoben],
+      [Dynamische Imports\ ohne literalen Pfad],
+      [Obere Schranke der\ Exposition; isolierter\ Mehrwert in Kap. 6 erhoben],
     [L2a -- statisch],
       [Ist ein Konstrukt\ erreichbar?],
       [Aufrufstrukturanalyse\ (vgl. Kapitel 3)],
-      [FNs durch Reflection,\ DI, glob. Augmentierungen;\ 81% FP-Reduktion ggü.\ npm audit @2021Nielsen],
+      [Reflection, DI,\ glob. Augmentierungen],
+      [81% FP-Reduktion\ ggü. npm audit\ (N=12) @2021Nielsen],
     [L2b -- dynamisch],
       [Wird ein Konstrukt\ ausgeführt?],
       [Laufzeitbeobachtung\ (vgl. Kapitel 3)],
-      [FNs durch unvollständige\ Testabdeckung; präziseste\ Evidenz; im PoC nicht\ implementiert],
+      [Unvollständige\ Testabdeckung],
+      [Präziseste Evidenz;\ im PoC nicht implementiert],
   ),
   caption: [Evidenzstufen des Usage-Evidence-Schemas mit Analysemethode,
             FN-Klassen und empirischer Einordnung.]
@@ -478,26 +503,44 @@ Dependency-Tree vorhanden (vgl. @Dreischritt-Scanner). L0 erzeugt zwei
 FP-Klassen: transitiv installierte, aber nie referenzierte Dependencies,
 adressierbar durch L1, sowie referenzierte Dependencies ohne erreichbaren
 Aufrufpfad zu verwundbaren Konstrukten, adressierbar durch L2. FNs sind
-innerhalb des statisch installierten Trees strukturell ausgeschlossen. Den
-Mechanismus illustriert `writex`: Von fünf gemeldeten Advisories ist nur
-eine ein True Positive, da die verwundbaren Funktionen der übrigen nie
-aufgerufen werden @2021Nielsen; die Gesamtpräzision von npm audit über
-zwölf Anwendungen ist @Evidence-Schema zu entnehmen.
+innerhalb des statisch installierten Trees strukturell ausgeschlossen.
+Das Problem lässt sich am Beispiel `writex` konkret zeigen: npm audit
+meldet fünf Schwachstellenwarnungen (Advisories), von denen nach manueller
+Prüfung nur eine tatsächlich relevant ist, da die verwundbaren Funktionen
+der übrigen vier vom Anwendungscode nie aufgerufen werden @2021Nielsen.
+Die Gesamtpräzision von npm audit über den gesamten Testkorpus ist
+@Evidence-Schema zu entnehmen.
 
-*L1 -- Import:* Eine Dependency wird durch einen statischen `import`- oder
-`require()`-Aufruf mit literalem Modulpfad referenziert, einschließlich
-Re-Exports und Namespace-Imports, wobei letztere die L2-Analyse erschweren,
-da das konkret aufgerufene Konstrukt nicht allein aus dem Statement
-bestimmbar ist. Da L1-Evidenz nicht voraussetzt, dass die importierende
-Datei selbst erreichbar ist, überschätzt L1 die tatsächliche Nutzung
-systematisch. L1 definiert damit, innerhalb des Geltungsbereichs statischer
-Imports, eine obere Schranke der potenziell relevanten Dependencies und
-damit eine konservative Aussage über die maximale Exposition gegenüber
-installierten Schwachstellen. Als formale Evidenzstufe ist L1 in der
-Forschungsliteratur nicht beschrieben, obwohl Werkzeuge wie `depcheck` oder
-`knip` das Prinzip implizit einsetzen, ohne es gegen Vulnerability-Daten zu
-beziehen. Der isolierte Mehrwert gegenüber L0 wird in der Evaluation
-(Kapitel 6) erhoben.
+*L1 -- Import:* Eine Dependency gilt als L1-positiv, wenn der Quellcode
+sie durch einen statischen `import`- oder `require()`-Aufruf mit literalem
+Modulpfad referenziert. Das schließt Re-Exports der Form
+`export { x } from 'dependency'` ein, sowie Namespace-Imports der Form
+`import * as x from 'dependency'`. Bei Namespace-Imports ist das konkret
+genutzte Konstrukt aus dem Import-Statement allein nicht bestimmbar, was
+die anschließende L2-Analyse erschwert.
+
+Das zentrale Problem von L1 lässt sich an einem konkreten Beispiel zeigen:
+Eine Datei `legacy-feature.ts` importiert `lodash`, wird aber selbst nie
+vom Einstiegspunkt der Anwendung aus aufgerufen, weil das Feature bereits
+entfernt wurde. `lodash` ist damit L1-positiv, obwohl zur Laufzeit kein
+Aufrufpfad existiert. L1 kann also nicht unterscheiden ob eine importierende
+Datei tatsächlich erreichbar ist oder nicht. Die Folge: L1 überschätzt die
+Menge tatsächlich genutzter Dependencies systematisch. Gleichzeitig ist
+diese Eigenschaft nützlich: Alle Dependencies die L1-negativ sind, also
+nirgendwo im Quellcode importiert werden, können mit hoher Wahrscheinlichkeit
+als nicht exploitierbar eingestuft werden. L1 bildet damit innerhalb des
+Geltungsbereichs statischer Imports eine konservative obere Schranke der
+tatsächlich genutzten Dependencies.
+
+Als formale Evidenzstufe ist L1 in der Forschungsliteratur nicht beschrieben,
+obwohl Werkzeuge wie `depcheck` @depcheck-github, das in der Analyse von
+Liu et al. als repräsentatives Import-Analyse-Werkzeug herangezogen wird
+@Liu2025, oder `knip` @knip-github das Prinzip implizit einsetzen: Sie
+melden installierte Dependencies die im Quellcode nicht referenziert werden,
+beziehen diese Analyse jedoch nicht auf Vulnerability-Daten. Der isolierte
+Mehrwert von L1 gegenüber L0, also der Anteil der Dependencies der zwar
+installiert aber nie importiert ist, wird in der Evaluation (Kapitel 6)
+erstmals gemessen.
 
 *L2 -- Erreichbarkeit:* *L2a* bezeichnet den durch Aufrufstrukturanalyse
 nachweisbaren Pfad vom Einstiegspunkt der Anwendung zu einem Konstrukt;
@@ -532,14 +575,21 @@ die Implementierung (Kapitel 5).
 
 Der Beitrag dieser Arbeit liegt in drei Leistungen: erstens der
 Formalisierung von L1 als eigenständiger Evidenzstufe, wobei es sich um
-eine Kategorie handelt, die Werkzeuge wie `depcheck` implizit umsetzen,
-ohne sie formal zu beschreiben oder gegen Vulnerability-Daten zu beziehen;
-zweitens der konzeptuellen Differenzierung von L2 in L2a und L2b, die
-bestehende Forschungsansätze präziser einordnet und den
-Implementierungsumfang des PoC klar abgrenzt; und drittens der
-prototypischen Implementierung von L0, L1 und L2a für das
+eine Kategorie handelt, die Werkzeuge wie `depcheck` @depcheck-github und
+`knip` @knip-github implizit umsetzen, ohne sie formal zu beschreiben oder
+gegen Vulnerability-Daten zu beziehen; zweitens der konzeptuellen
+Differenzierung von L2 in L2a und L2b, die bestehende Forschungsansätze
+präziser einordnet und den Implementierungsumfang des PoC klar abgrenzt;
+und drittens der prototypischen Implementierung von L0, L1 und L2a für das
 TypeScript/Node.js-Ökosystem. Kapitel 3 (Verwandte Arbeiten) ordnet
 bestehende Ansätze anhand dieses Schemas ein.
+
+
+
+
+
+
+
 == Anforderungen an den PoC
 
 // TODO
