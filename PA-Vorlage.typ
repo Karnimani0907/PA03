@@ -85,6 +85,159 @@ Zweitens führt die Fokussierung auf Package-Level-Analysen zu einer hohen Rate 
 
 == Problemstellung und Forschungsfragen <Problemstellung>
 
+Dependency-Scanner wie `npm audit` melden eine Dependency als verwundbar,
+sobald Paketname und Version in den betroffenen Versionsbereich eines
+CVE-Eintrags fallen – unabhängig davon, ob die vulnerable Funktion im
+konkreten Anwendungskontext je aufgerufen wird. Ob und in welchem Ausmaß
+statische Nutzungsanalyse diese Befundqualität verbessern kann und welche
+inhärenten Grenzen sie dabei aufweist, ist für TypeScript/Node.js-Projekte
+empirisch nicht hinreichend untersucht.
+
+Der übergeordnete Erkenntnisrahmen lässt sich in folgender Leitfrage
+zusammenfassen:
+
+#quote(block: true)[
+  Inwiefern verbessert statische Nutzungsanalyse die Aussagekraft
+  metadatenbasierter Vulnerability-Scanner für
+  TypeScript/Node.js-Deployments, und unter welchen Bedingungen stößt
+  dieser Ansatz an seine inhärenten Grenzen?
+]
+
+Diese Leitfrage konkretisiert sich in zwei zentralen Forschungsfragen:
+
+*FF1a (FP-Reduktion):* Inwiefern reduziert statische Import- und
+Erreichbarkeitsanalyse die Rate der False-Positive-Befunde
+metadatenbasierter Vulnerability-Scanner in TypeScript/Node.js-Projekten
+gegenüber reiner Präsenzanalyse?
+
+*FF1b (Priorisierung):* Inwiefern ermöglicht ein aus Import- und
+Erreichbarkeitsevidenz abgeleiteter Konfidenz-Score eine risikobasierte
+Priorisierung der verbleibenden Vulnerability-Befunde?
+
+FF1a und FF1b werden durch drei Leitfragen strukturiert:
+
+*LF1 (Identifikation):* Mit welcher Genauigkeit und unter welchen
+Voraussetzungen lassen sich bloated Dependencies in
+TypeScript/Node.js-Deployments durch statische Import- und
+Erreichbarkeitsanalyse identifizieren, gemessen an einem manuell
+validierten Ground-Truth-Korpus?
+
+*LF2 (Messung):* In welchem Ausmaß sinkt die False-Positive-Rate
+metadatenbasierter Scanner, wenn Befunde um statische Import-Evidenz
+und Erreichbarkeitsevidenz angereichert werden?
+
+*LF3 (Grenzen):* Unter welchen Bedingungen verliert die statische
+Import- und Erreichbarkeitsanalyse ihre Aussagekraft in
+TypeScript/Node.js-Projekten, und welche Klassen von Dependencies
+entziehen sich dem Ansatz prinzipiell – mit der Erwartung, dass
+Projekte mit hohem Anteil dynamischer Imports oder
+@DI#[]-Mechanismen strukturell außerhalb des Geltungsbereichs
+der statischen Analyse fallen?
+
+LF1 leitet die Designentscheidungen der Analysepipeline in Kapitel 4.
+LF2 wird in der Evaluation (Kapitel 6) quantitativ beantwortet, indem
+die Befundsätze der einzelnen Analysestufen gegenübergestellt werden.
+LF3 verpflichtet die Arbeit dazu, die in @UES-Geltungsbereich
+eingeführten Ausnahmeklassen als eigenständige Bedrohungen der externen
+Validität zu operationalisieren. Die Antworten auf LF1 bis LF3 münden
+gemeinsam in die Beantwortung von FF1a und FF1b, die im Fazit
+(Kapitel 7) synthetisiert werden.
+
+Die Arbeit vertritt dabei die These, dass bereits eine Import-basierte
+Analysestufe einen messbaren, bisher nicht quantifizierten
+Sicherheitsmehrwert gegenüber reiner Präsenzanalyse liefert – und
+dass dieser Mehrwert durch eine zusätzliche Erreichbarkeitsanalyse
+weiter steigerbar ist.
+
+
+== Zielsetzung und Abgrenzung <Zielsetzung>
+
+=== Zielsetzung
+
+Diese Arbeit verfolgt ein exploratives Ziel: Sie untersucht, in welchem
+Ausmaß und unter welchen Bedingungen statische Nutzungsanalyse geeignet
+ist, Vulnerability-Befunde metadatenbasierter Scanner in
+TypeScript/Node.js-Projekten risikobasiert zu priorisieren. Die in
+@Problemstellung formulierten Forschungsfragen – insbesondere FF1a und
+FF1b zur messbaren FP-Reduktion und Priorisierbarkeit sowie LF1 bis LF3
+zu Identifikationsgenauigkeit, Reduktionsausmaß und inhärenten Grenzen –
+werden dabei durch einen prototypischen @PoC operationalisiert und
+quantitativ evaluiert.
+
+Als Ergebnis entsteht eine prototypische Analysepipeline, die
+Vulnerability-Befunde anhand statischer Nutzungsevidenz stufenweise
+priorisiert und quantitativ evaluiert. Damit wird – im Rahmen der für
+diese Arbeit durchgeführten Literaturrecherche wurde kein Beitrag
+identifiziert, der dies bereits leistet – erstmals der isolierte
+Erkenntnisgewinn einer Import-basierten Analysestufe gegenüber reiner
+Präsenzanalyse in einem Sicherheitskontext messbar gemacht (vgl. LF2).
+
+=== Begründung für den statischen Analyseansatz <Begruendung>
+
+Die Entscheidung für einen rein statischen Ansatz folgt nicht aus einer
+methodischen Präferenz, sondern aus dem Anwendungsfall, den diese Arbeit
+adressiert: die Analyse fremder TypeScript/Node.js-Deployments im Rahmen
+von Sicherheitsbewertungen.
+
+In diesem Kontext ist dynamische Laufzeitanalyse methodisch nicht
+anwendbar. Dynamische Methoden wie V8 Coverage, Runtime-Tracing oder
+eBPF-basiertes Monitoring setzen Kontrolle über die Laufzeitumgebung
+voraus: Die Anwendung muss gestartet, instrumentiert und unter realem
+oder simuliertem Traffic betrieben werden können. Im beschriebenen
+Anwendungskontext sind diese Voraussetzungen grundsätzlich nicht gegeben.
+Erstens fehlt bei der Analyse fremder Systeme typischerweise der Zugriff
+auf die produktive Laufzeitumgebung – Kunden stellen Quellcode und
+Artefakte zur Verfügung, nicht aber eine instrumentierbare
+Staging-Umgebung. Zweitens verbieten Datenschutzanforderungen,
+Lizenzbestimmungen und das Risiko unerwünschter Seiteneffekte die
+Ausführung einer Kundenanwendung in einer externen Umgebung
+typischerweise. Drittens sind viele Projekte ohne umfangreiche
+Konfiguration, externe Dienste oder Datenbanken nicht startbar, während
+statische Analyse ausschließlich Quellcode und installierte Packages
+erfordert.
+
+Ansätze, die eine partielle Laufzeitbeobachtung durch kontrollierte
+Testausführung simulieren, setzen ebenfalls eine ausführbare Umgebung
+voraus und sind damit denselben Einschränkungen unterworfen. Statische
+Analyse operiert hingegen ausschließlich auf Quellcode und
+Dependency-Metadaten und ist damit die primär anwendbare Analyseklasse
+in diesem Kontext. Zugleich steht dieser Ansatz im Einklang mit einer
+Reihe etablierter Forschungsarbeiten wie JSLIM, Mininode und DepClean,
+die ebenfalls rein statisch operieren (vgl. Kapitel 3) @Liu2025 @2021Nielsen.
+
+Aus diesen Rahmenbedingungen und dem explorativen Charakter der Arbeit
+ergeben sich die folgenden bewussten Einschränkungen des
+Untersuchungsumfangs.
+
+=== Abgrenzung
+
+*Forschungsprototyp, kein Produktivsystem.* Der @PoC demonstriert
+Machbarkeit und misst den Erkenntnisgewinn. Aspekte wie Skalierbarkeit,
+Fehlertoleranz und CI/CD-Integration sind nicht Gegenstand dieser Arbeit.
+
+*Keine dynamische Laufzeitanalyse.* Aus den in @Begruendung dargelegten
+Gründen ist laufzeitbasierte Erreichbarkeitsanalyse nicht implementiert;
+die erreichbarkeitsbezogenen Aussagen sind statische Schätzungen mit
+quantifizierter Konfidenz, keine durch Laufzeitdaten verifizierten Fakten.
+Dynamische Laufzeitanalyse wird in Kapitel 7 als natürlicher Folgeschritt
+diskutiert.
+
+*Eingeschränkter JavaScript-Sprachsupport.* Dynamische Sprachkonstrukte
+wie `require(variable)` oder `eval()`, Plugin-Systeme, die Packages
+über Konfigurationsstrings laden, sowie @DI#[]-Mechanismen wie der
+NestJS-@IoC#[]-Container sind für die statische Analyse prinzipiell
+nicht erfassbar. Der @PoC ist für Projekte mit hohem Anteil solcher
+Konstrukte nur bedingt geeignet; diese Fälle werden in
+@UES-Geltungsbereich als Ausnahmeklassen eingeführt und in Kapitel 6
+als Bedrohungen der externen Validität operationalisiert.
+
+*TypeScript/Node.js als Zielökosystem.* Andere JavaScript-Laufzeiten
+wie Deno oder Bun sowie reine JavaScript-Projekte ohne Typsystem sind
+nicht Gegenstand der Evaluation.
+
+
+//== Problemstellung und Forschungsfragen <Problemstellung>
+
 // TODO: Forschungsfragen ausformulieren
 // Leitfragen:
 // - Wie können ungenutzte Abhängigkeiten in TypeScript/Node.js-Deployments
@@ -95,14 +248,10 @@ Zweitens führt die Fokussierung auf Package-Level-Analysen zu einer hohen Rate 
 //   Befunde lassen sich damit gegenüber einer reinen Präsenzanalyse (L0)
 //   reduzieren?
 
-== Zielsetzung und Abgrenzung <Zielsetzung>
+//== Zielsetzung und Abgrenzung <Zielsetzung>
 
 // TODO: Zielbeschreibung (PoC), Abgrenzung (kein Produktivsystem,
 //       kein vollständiger JS-Sprachsupport), grobe Vorgehensweise
-
-== Aufbau der Arbeit <Aufbau>
-
-// TODO: Kapitelübersicht in 1–2 Sätzen pro Kapitel
 
 
 
@@ -754,6 +903,7 @@ Kapitel 5 beschrieben; ihre Validierung erfolgt in Kapitel 6.
 
 // TODO
 
+
 == L1: Loaded-Heuristiken
 
 // TODO
@@ -798,7 +948,7 @@ Kapitel 5 beschrieben; ihre Validierung erfolgt in Kapitel 6.
 
 // TODO: Rückbezug auf Forschungsfragen aus @Problemstellung
 
-== Ausblick
+== Ausblick <Ausblick>
 
 // TODO: L2b (dynamische Erreichbarkeit), bessere CVE→Symbol-Zuordnung,
 //       CI/CD-Integration
